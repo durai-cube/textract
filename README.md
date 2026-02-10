@@ -17,7 +17,7 @@ A text extraction node module.
 * DOC, DOCX
 * ODT, OTT (experimental, feedback needed!)
 * RTF
-* XLS, XLSX, XLSB, XLSM, XLTX
+* XLS, XLSB, XLSM, XLSX, XLTX
 * CSV
 * ODS, OTS
 * PPTX, POTX
@@ -28,11 +28,13 @@ A text extraction node module.
 * `application/javascript`
 * All `text/*` mime-types.
 
-In almost all cases above, what textract cares about is the mime type.  So `.html` and `.htm`, both possessing the same mime type, will be extracted.  Other extensions that share mime types with those above should also extract successfully. For example, `application/vnd.ms-excel` is the mime type for `.xls`, but also for 5 other file types.
+In almost all cases above, what textract cares about is the mime type.  So `.html` and `.htm`, both possessing the same mime type, will be extracted.  Other extensions that share mime types with those above should also extract successfully.
 
 _Does textract not extract from files of the type you need?_  Add an issue or submit a pull request. It many cases textract is already capable, it is just not paying attention to the mime type you may be interested in.
 
 ## Install
+
+Requires Node.js `>=24`.
 
 ```
 npm install textract
@@ -47,6 +49,8 @@ Note, if any of the requirements below are missing, textract will run and extrac
 * `RTF` extraction requires `unrtf` be installed, [link](https://www.gnu.org/software/unrtf/), unless on OSX in which case textutil (installed by default) is used.
 * `PNG`, `JPG` and `GIF` require `tesseract` to be available, [link](http://code.google.com/p/tesseract-ocr/).  Images need to be pretty clear, high DPI and made almost entirely of just text for `tesseract` to be able to accurately extract the text.
 * `DXF` extraction requires `drawingtotext` be available, [link](https://github.com/davidworkman9/drawingtotext)
+* Spreadsheet extraction uses ExcelJS for OpenXML formats (`XLSX`, `XLTX`, `XLSM`).
+* `XLS`, `XLSB`, `ODS`, `OTS` extraction requires LibreOffice (`soffice`) to be installed (used to convert to `.xlsx` which is then parsed via ExcelJS).
 
 ## Configuration
 
@@ -60,6 +64,7 @@ Configuration can be passed into textract.  The following configuration options 
 * `tesseract.cmd`: `tesseract.lang` allows a quick means to provide the most popular tesseract option, but if you need to configure more options, you can simply pass `cmd`. `cmd` is the string that matches the command-line options you want to pass to tesseract. For instance, to provide language and `psm`, you would pass `{ tesseract: { cmd:"-l chi_sim -psm 10" } }`
 * `pdftotextOptions`: This is a proxy options object to the library textract uses for pdf extraction: [pdf-text-extract](https://github.com/nisaacson/pdf-text-extract). Options include `ownerPassword`, `userPassword` if you are extracting text from password protected PDFs. IMPORTANT: textract modifies the pdf-text-extract `layout` default so that, instead of `layout: layout`, it uses `layout:raw`. It is not suggested you modify this without understanding what trouble that might get you in. See [this GH issue](https://github.com/dbashford/textract/issues/75) for why textract overrides that library's default.
 * `typeOverride`: Used with `fromUrl`, if set, rather than using the `content-type` from the URL request, will use the provided `typeOverride`.
+* `fetchTimeout`: Used with `fromUrl` (milliseconds). Defaults to `30000`.
 * `includeAltText`: When extracting HTML, whether or not to include `alt` text with the extracted text. By default this is `false`.
 
 To use this configuration at the command line, prefix each open with a `--`.
@@ -70,7 +75,7 @@ Ex: `textract image.png --tesseract.lang=deu`
 
 ### Commmand Line
 
-If textract is installed gloablly, via `npm install -g textract`, then the following command will write the extracted text to the console for a file on the file system.
+If textract is installed globally, via `npm install -g textract`, then the following command will write the extracted text to the console for a file on the file system.
 
 ```
 $ textract pathToFile

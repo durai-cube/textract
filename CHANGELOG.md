@@ -1,3 +1,16 @@
+### Unreleased
+* Node.js requirement is now `>=24`.
+* Spreadsheet extraction:
+	* `.xlsx`/`.xltx`/`.xlsm` extracted using ExcelJS.
+	* `.xls`/`.xlsb`/`.ods`/`.ots` extracted by converting to `.xlsx` using LibreOffice (`soffice`/`libreoffice`), then parsing with ExcelJS.
+* `fromUrl` now uses Node's built-in `fetch` (removes the external HTTP dependency) and supports `(url, callback)` in addition to `(url, options, callback)`. Adds `fetchTimeout` (ms) option.
+* Buffer extraction now preserves an appropriate file extension when writing temp files (improves MIME/type detection for buffer inputs).
+* CLI: removed `meow` dependency; argument parsing supports nested flags like `--exec.maxBuffer` and boolean/number coercion; defaults `preserveLineBreaks` to `true` for readability.
+* DOCX/PPTX extraction: migrated XML parsing to `@xmldom/xmldom` and improved robustness (better ordering + error handling, and DOCX includes headers/footers).
+* EPUB extraction is deterministic (preserves chapter order).
+* Markdown extraction updated for modern `marked` API.
+* Security/maintenance: dependency refresh with `npm audit` clean; tests are less flaky (local HTTP servers replace external network calls; tests skip when required system binaries are missing).
+
 ### 2.5.0
 * [#188](https://github.com/dbashford/textract/pull/188). PR updated `marked` depedency.
 * [#179](https://github.com/dbashford/textract/pull/179). PR added ability to capture powerpoint speaker notes.

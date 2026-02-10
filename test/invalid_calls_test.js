@@ -3,7 +3,7 @@
 var test = function( done ) {
   return function( error, text ) {
     expect( text ).to.be.null;
-    expect( error ).to.be.an( 'object' );
+    expect( error ).to.be.an( 'error' );
     expect( error.message ).to.be.an( 'string' );
     expect( error.message ).to.eql( 'Incorrect parameters passed to textract.' );
     done();

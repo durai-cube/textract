@@ -3,7 +3,6 @@
 
 var path = require( 'path' )
   , fs = require( 'fs' )
-  , meow = require( 'meow' )
   , help = 'Usage:\n' +
            '  textract pathToFile\n\n' +
            'Flags:\n' +
@@ -18,15 +17,78 @@ var path = require( 'path' )
            'Example:\n' +
            '  textract test/files/huge.docx --exec.maxBuffer 500000 --preserveLineBreaks false\n'
 
-var cli = meow({
-  help: help,
-  pkg: '../package.json'
-});
+function setDeep( obj, keyPath, value ) {
+  var parts = keyPath.split( '.' );
+  var current = obj;
+  for ( var i = 0; i < parts.length - 1; i++ ) {
+    var part = parts[i];
+    if ( !current[part] || typeof current[part] !== 'object' ) {
+      current[part] = {};
+    }
+    current = current[part];
+  }
+  current[parts[parts.length - 1]] = value;
+}
 
-if ( !cli.input || cli.input.length === 0 ) {
+function coerceValue( val ) {
+  if ( val === 'true' ) {
+    return true;
+  }
+  if ( val === 'false' ) {
+    return false;
+  }
+  if ( typeof val === 'string' && val.length > 0 && val.match( /^-?\d+(?:\.\d+)?$/ ) ) {
+    return Number( val );
+  }
+  return val;
+}
+
+function parseArgs( argv ) {
+  var input = [];
+  var flags = {};
+
+  for ( var i = 0; i < argv.length; i++ ) {
+    var arg = argv[i];
+
+    if ( arg === '--help' || arg === '-h' ) {
+      flags.help = true;
+      continue;
+    }
+
+    if ( arg.indexOf( '--' ) === 0 ) {
+      var stripped = arg.slice( 2 );
+      var key;
+      var value;
+
+      if ( stripped.indexOf( '=' ) !== -1 ) {
+        key = stripped.split( '=' )[0];
+        value = stripped.slice( key.length + 1 );
+      } else {
+        key = stripped;
+        if ( argv[i + 1] !== undefined && argv[i + 1].indexOf( '--' ) !== 0 ) {
+          value = argv[i + 1];
+          i++;
+        } else {
+          value = true;
+        }
+      }
+
+      setDeep( flags, key, coerceValue( value ) );
+    } else {
+      input.push( arg );
+    }
+  }
+
+  return { input: input, flags: flags };
+}
+
+var cli = parseArgs( process.argv.slice( 2 ) );
+
+if ( cli.flags.help || !cli.input || cli.input.length === 0 ) {
   console.log( '\n' + help );
 } else {
   var lib = path.join( path.dirname( fs.realpathSync( __filename ) ), '..', 'lib', 'cli.js' );
+  // eslint-disable-next-line global-require
   var textract = require( lib );
   textract( cli.input[0], cli.flags );
 }

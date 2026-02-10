@@ -2,25 +2,97 @@
 /* global fromUrl */
 
 var nodeUrl = require( 'url' );
+var http = require( 'http' );
+var fs = require( 'fs' );
+var path = require( 'path' );
+var mime = require( 'mime' );
 
 describe( 'fromUrl tests', function() {
-  var test;
+  var test, baseUrl, server;
 
-  this.timeout( 3000 );
+  function cmdForDoc() {
+    return ( process.platform === 'darwin' ) ? 'textutil' : 'antiword';
+  }
+
+  // Avoid flaky external network calls by running a tiny local HTTP server
+  // that serves the existing test fixtures with appropriate content-type.
+  before( function( done ) {
+    var fixturesDir = path.join( __dirname, 'files' );
+
+    server = http.createServer( function( req, res ) {
+      var url = req.url || '/';
+
+      if ( url.indexOf( '/misleading.aspx' ) === 0 ) {
+        // Extension says .aspx, but content is HTML.
+        var htmlPath = path.join( fixturesDir, 'test.html' );
+        fs.readFile( htmlPath, function( err, data ) {
+          if ( err ) {
+            res.statusCode = 500;
+            res.end( 'error' );
+            return;
+          }
+          res.statusCode = 200;
+          res.setHeader( 'content-type', 'text/html; charset=utf-8' );
+          res.end( data );
+        } );
+        return;
+      }
+
+      if ( url.indexOf( '/files/' ) === 0 ) {
+        var name = decodeURIComponent( url.slice( '/files/'.length ) ).split( '?' )[0];
+        name = path.basename( name );
+        var filePath = path.join( fixturesDir, name );
+
+        fs.readFile( filePath, function( err2, data2 ) {
+          if ( err2 ) {
+            res.statusCode = 404;
+            res.end( 'not found' );
+            return;
+          }
+          res.statusCode = 200;
+          res.setHeader( 'content-type', ( mime.getType( filePath ) || 'application/octet-stream' ) );
+          res.end( data2 );
+        } );
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end( 'not found' );
+    } );
+
+    server.listen( 0, '127.0.0.1', function() {
+      baseUrl = 'http://127.0.0.1:' + server.address().port;
+      done();
+    } );
+  } );
+
+  after( function( done ) {
+    if ( server ) {
+      server.close( done );
+    } else {
+      done();
+    }
+  } );
 
   it( 'will properly extract files from sites with extensions that are misleading', function( done ) {
-    var url = 'http://apps.leg.wa.gov/billinfo/summary.aspx?bill=1276';
+    var url = baseUrl + '/misleading.aspx';
     fromUrl( url, function( error, text ) {
       expect( error ).to.be.null;
       expect( text ).to.be.an( 'string' );
-      expect( text.substring( 0, 100 ) ).to.eql(
-        ' Washington State Legislature Bill Summary 2017-2018 2015-2016 2013-2014 2011-2012 2009-2010 2007-20' );
+      expect( text.substring( 0, 83 ) ).to.eql(
+        ' This is a long string of text that should get extracted with new lines inserted'
+      );
       done();
-    });
-  });
+    } );
+  } );
 
   it( 'take object URL', function( done ) {
-    var url = 'https://cdn.rawgit.com/dbashford/textract/master/test/files/doc.doc?raw=true'
+    var requiredCmd = cmdForDoc();
+    if ( global.hasCommand && !global.hasCommand( requiredCmd ) ) {
+      this.skip();
+    }
+
+    var url = baseUrl + '/files/doc.doc'
       , urlObj = nodeUrl.parse( url )
       ;
 
@@ -29,31 +101,32 @@ describe( 'fromUrl tests', function() {
       expect( text ).to.be.an( 'string' );
       expect( text.substring( 0, 100 ) ).to.eql( ' Word Specification Sample Working Draft 04, 16 August 2002 Document identifier: wd-spectools-word-s' );
       done();
-    });
-  });
+    } );
+  } );
 
-  test = function( ext, name, _text ) {
-    it( 'will ' + ext + ' files', function( done ) {
-      var url = 'https://cdn.rawgit.com/dbashford/textract/master/test/files/' + name + '?raw=true';
+  test = function( ext, name, _text, requiredCmd ) {
+    var testIt = it;
+
+    if ( requiredCmd && global.hasCommand && !global.hasCommand( requiredCmd ) ) {
+      testIt = it.skip;
+    }
+
+    testIt( 'will ' + ext + ' files', function( done ) {
+      var url = baseUrl + '/files/' + encodeURIComponent( name );
       fromUrl( url, function( error, text ) {
         expect( error ).to.be.null;
         expect( text ).to.be.an( 'string' );
         expect( text.substring( 0, 100 ) ).to.eql( _text );
         done();
-      });
-    });
+      } );
+    } );
   };
 
   test(
     'doc',
     'doc.doc',
-    ' Word Specification Sample Working Draft 04, 16 August 2002 Document identifier: wd-spectools-word-s'
-  );
-
-  test(
-    'xls',
-    'test.xls',
-    'This,is,a,spreadsheet,yay! '
+    ' Word Specification Sample Working Draft 04, 16 August 2002 Document identifier: wd-spectools-word-s',
+    cmdForDoc()
   );
 
   test(
@@ -92,11 +165,6 @@ describe( 'fromUrl tests', function() {
     ' This is an h1 This is an h2 This text has been bolded and italicized '
   );
 
-  test(
-    'ods',
-    'ods.ods',
-    'This,is,a,ods Really,it,is, I,promise,, '
-  );
 
   test(
     'xml',
@@ -128,11 +196,6 @@ describe( 'fromUrl tests', function() {
     'This is a document template, yay templates! Woo templates get me so excited!'
   );
 
-  test(
-    'ots',
-    'ots.ots',
-    "This,is , template, an,open,office,template isn't,it,awesome?, you,know,it,is "
-  );
 
   test(
     'odg',

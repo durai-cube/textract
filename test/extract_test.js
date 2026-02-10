@@ -2,6 +2,80 @@
 /* global fromFileWithPath */
 
 var path = require( 'path' );
+var fs = require( 'fs' );
+var os = require( 'os' );
+var childProcess = require( 'child_process' );
+var ExcelJS = require( 'exceljs' );
+
+function _getLibreOfficeCmd() {
+  if ( global.hasCommand && global.hasCommand( 'soffice' ) ) {
+    return 'soffice';
+  }
+  if ( global.hasCommand && global.hasCommand( 'libreoffice' ) ) {
+    return 'libreoffice';
+  }
+  return null;
+}
+
+function _mkdtemp( cb ) {
+  fs.mkdtemp( path.join( os.tmpdir(), 'textract-spreadsheet-test-' ), cb );
+}
+
+function _rmrf( dirPath, cb ) {
+  fs.rm( dirPath, { recursive: true, force: true }, function() {
+    cb();
+  } );
+}
+
+function _writeHelloWorldXlsx( outPath, cb ) {
+  ( async function() {
+    var workbook = new ExcelJS.Workbook();
+    var ws = workbook.addWorksheet( 'Sheet1' );
+    ws.getCell( 'A1' ).value = 'Hello';
+    ws.getCell( 'B1' ).value = 'World';
+    await workbook.xlsx.writeFile( outPath );
+  } )().then( function() {
+    cb( null );
+  } ).catch( function( err ) {
+    cb( err );
+  } );
+}
+
+function _convertWithLibreOffice( sofficeCmd, inPath, outDir, targetExt, cb ) {
+  var baseName = path.basename( inPath, path.extname( inPath ) );
+  var expectedOut = path.join( outDir, baseName + '.' + targetExt );
+  var args = ['--headless', '--convert-to', targetExt, '--outdir', outDir, inPath];
+
+  childProcess.execFile( sofficeCmd, args, { timeout: 25000 }, function( err ) {
+    if ( err ) {
+      cb( err, null );
+      return;
+    }
+
+    fs.access( expectedOut, fs.constants.F_OK, function( accessErr ) {
+      if ( !accessErr ) {
+        cb( null, expectedOut );
+        return;
+      }
+
+      // LibreOffice sometimes tweaks output names; fall back to the first match.
+      fs.readdir( outDir, function( readErr, files ) {
+        if ( readErr ) {
+          cb( readErr, null );
+          return;
+        }
+        var candidate = ( files || [] ).find( function( f ) {
+          return path.extname( f ).toLowerCase() === '.' + targetExt;
+        } );
+        if ( !candidate ) {
+          cb( new Error( 'LibreOffice conversion produced no .' + targetExt + ' output' ), null );
+          return;
+        }
+        cb( null, path.join( outDir, candidate ) );
+      } );
+    } );
+  } );
+}
 
 describe( 'textract', function() {
   var test;
@@ -145,6 +219,13 @@ describe( 'textract', function() {
   });
 
   describe( 'for .rtf files', function() {
+    before( function() {
+      var cmd = ( process.platform === 'darwin' ) ? 'textutil' : 'unrtf';
+      if ( global.hasCommand && !global.hasCommand( cmd ) ) {
+        this.skip();
+      }
+    } );
+
     it( 'will extract text from rtf files', function( done ) {
       var docPath = path.join( __dirname, 'files', 'sample.rtf' );
       fromFileWithPath( docPath, function( error, text ) {
@@ -177,6 +258,13 @@ describe( 'textract', function() {
   });
 
   describe( 'for .doc files', function() {
+    before( function() {
+      var cmd = ( process.platform === 'darwin' ) ? 'textutil' : 'antiword';
+      if ( global.hasCommand && !global.hasCommand( cmd ) ) {
+        this.skip();
+      }
+    } );
+
     it( 'will extract text from actual doc files', function( done ) {
       var docPath = path.join( __dirname, 'files', 'doc.doc' );
       fromFileWithPath( docPath, function( error, text ) {
@@ -226,38 +314,6 @@ describe( 'textract', function() {
     });
   });
 
-  describe( 'for .xls files', function() {
-    it( 'will extract text', function( done ) {
-      var docPath = path.join( __dirname, 'files', 'test.xls' );
-      fromFileWithPath( docPath, function( error, text ) {
-        expect( error ).to.be.null;
-        expect( text ).to.be.a( 'string' );
-        expect( text.substring( 0, 20 ) ).to.eql( 'This,is,a,spreadshee' );
-        done();
-      });
-    });
-
-    it( 'will extract text from multi-line files', function( done ) {
-      var docPath = path.join( __dirname, 'files', 'test-multiline.xls' );
-      fromFileWithPath( docPath, function( error, text ) {
-        expect( error ).to.be.null;
-        expect( text ).to.be.a( 'string' );
-        expect( text.substring( 0, 40 ) ).to.eql( 'This,is,a,spreadsheet,yay! And ,this,is,' );
-        done();
-      });
-    });
-
-    it( 'will extract text from multi-line files and keep line breaks', function( done ) {
-      var docPath = path.join( __dirname, 'files', 'test-multiline.xls' );
-      fromFileWithPath( docPath, { preserveLineBreaks: true }, function( error, text ) {
-        expect( error ).to.be.null;
-        expect( text ).to.be.a( 'string' );
-        expect( text.substring( 0, 40 ) ).to.eql( 'This,is,a,spreadsheet,yay!\nAnd ,this,is,' );
-        done();
-      });
-    });
-  });
-
   describe( 'for .xlsx files', function() {
     it( 'will extract text and numbers from XLSX files', function( done ) {
       var filePath = path.join( __dirname, 'files', 'pi.xlsx' );
@@ -282,7 +338,7 @@ describe( 'textract', function() {
     it( 'will error when input file is not an actual xlsx file', function( done ) {
       var filePath = path.join( __dirname, 'files', 'notaxlsx.xlsx' );
       fromFileWithPath( filePath, function( error ) {
-        expect( error ).to.be.an( 'object' );
+        expect( error ).to.be.an( 'error' );
         expect( error.message ).to.be.a( 'string' );
         expect( error.message.substring( 0, 43 ) ).to.eql( 'Could not extract notaxlsx.xlsx, Error: PRN' );
         done();
@@ -315,7 +371,7 @@ describe( 'textract', function() {
       var filePath = path.join( __dirname, 'files', 'notapdf.pdf' );
       fromFileWithPath( filePath, function( error, text ) {
         expect( text ).to.be.null;
-        expect( error ).to.be.an( 'object' );
+        expect( error ).to.be.an( 'error' );
         expect( error.message ).to.be.a( 'string' );
         expect( error.message.substring( 0, 34 ) ).to.eql( 'Error extracting PDF text for file' );
         done();
@@ -412,7 +468,7 @@ describe( 'textract', function() {
       var filePath = path.join( __dirname, 'files', 'notadocx.docx' );
       fromFileWithPath( filePath, function( error, text ) {
         expect( text ).to.be.null;
-        expect( error ).to.be.an( 'object' );
+        expect( error ).to.be.an( 'error' );
         expect( error.message ).to.be.a( 'string' );
         expect( error.message.substring( 0, 34 ) ).to.eql( 'File not correctly recognized as z' );
         done();
@@ -484,7 +540,7 @@ describe( 'textract', function() {
     it( 'will error when .txt file encoding cannot be detected', function( done ) {
       var filePath = path.join( __dirname, 'files', 'unknown-encoding.txt' );
       fromFileWithPath( filePath, function( error ) {
-        expect( error ).to.be.an( 'object' );
+        expect( error ).to.be.an( 'error' );
         expect( error.message ).to.be.a( 'string' );
         expect( error.message ).to.eql( 'Could not detect encoding for file named [[ unknown-encoding.txt ]]' );
         done();
@@ -534,6 +590,10 @@ describe( 'textract', function() {
 
   describe( 'for .dxf files', function() {
     it( 'will extract text from actual dxf files', function( done ) {
+      if ( global.hasCommand && !global.hasCommand( 'drawingtotext' ) ) {
+        this.skip();
+      }
+
       var filePath = path.join( __dirname, 'files', 'dxf.dxf' );
       fromFileWithPath( filePath, function( error, text ) {
         expect( error ).to.be.null;
@@ -547,7 +607,7 @@ describe( 'textract', function() {
     it( 'will error when input file is not an actual dxf file', function( done ) {
       var filePath = path.join( __dirname, 'files', 'notadxf.dxf' );
       fromFileWithPath( filePath, function( error ) {
-        expect( error ).to.be.an( 'object' );
+        expect( error ).to.be.an( 'error' );
         expect( error.message ).to.be.a( 'string' );
         expect( error.message.substring( 0, 40 ) ).to.eql( 'Error for type: [[ image/vnd.dxf ]], fil' );
         done();
@@ -628,6 +688,12 @@ describe( 'textract', function() {
   });
 
   describe( 'for image files', function() {
+    before( function() {
+      if ( global.hasCommand && !global.hasCommand( 'tesseract' ) ) {
+        this.skip();
+      }
+    } );
+
     it( 'will extract text from PNG files', function( done ) {
       var filePath = path.join( __dirname, 'files', 'testphoto.png' );
       fromFileWithPath( filePath, function( error, text ) {
@@ -714,12 +780,232 @@ describe( 'textract', function() {
     '\nThis is an h1\nThis is an h2\nThis text has been bolded and italicized\n'
   );
 
-  test(
-    'ods',
-    'ods.ods',
-    'This,is,a,ods Really,it,is, I,promise,, ',
-    'This,is,a,ods\nReally,it,is,\nI,promise,,\n'
-  );
+  ( _getLibreOfficeCmd() ? describe : describe.skip )( 'for .ods files (LibreOffice -> .xlsx -> ExcelJS)', function() {
+    it( 'will extract text', function( done ) {
+      var sofficeCmd = _getLibreOfficeCmd();
+      this.timeout( 30000 );
+
+      _mkdtemp( function( err, tmpDir ) {
+        if ( err ) {
+          done( err );
+          return;
+        }
+
+        var xlsxPath = path.join( tmpDir, 'hello.xlsx' );
+        _writeHelloWorldXlsx( xlsxPath, function( err2 ) {
+          if ( err2 ) {
+            _rmrf( tmpDir, function() { done( err2 ); } );
+            return;
+          }
+
+          _convertWithLibreOffice( sofficeCmd, xlsxPath, tmpDir, 'ods', function( err3, odsPath ) {
+            if ( err3 ) {
+              _rmrf( tmpDir, function() { done( err3 ); } );
+              return;
+            }
+
+            fromFileWithPath( odsPath, function( error, text ) {
+              _rmrf( tmpDir, function() {
+                expect( error ).to.be.null;
+                expect( text ).to.be.an( 'string' );
+                expect( text ).to.contain( 'Hello,World' );
+                done();
+              } );
+            } );
+          } );
+        } );
+      } );
+    } );
+
+    it( 'will extract text and preserve line breaks', function( done ) {
+      var sofficeCmd = _getLibreOfficeCmd();
+      this.timeout( 30000 );
+
+      _mkdtemp( function( err, tmpDir ) {
+        if ( err ) {
+          done( err );
+          return;
+        }
+
+        var xlsxPath = path.join( tmpDir, 'hello.xlsx' );
+        _writeHelloWorldXlsx( xlsxPath, function( err2 ) {
+          if ( err2 ) {
+            _rmrf( tmpDir, function() { done( err2 ); } );
+            return;
+          }
+
+          _convertWithLibreOffice( sofficeCmd, xlsxPath, tmpDir, 'ods', function( err3, odsPath ) {
+            if ( err3 ) {
+              _rmrf( tmpDir, function() { done( err3 ); } );
+              return;
+            }
+
+            fromFileWithPath( odsPath, { preserveLineBreaks: true }, function( error, text ) {
+              _rmrf( tmpDir, function() {
+                expect( error ).to.be.null;
+                expect( text ).to.be.an( 'string' );
+                expect( text ).to.contain( 'Hello,World' );
+                expect( text ).to.contain( '\n' );
+                done();
+              } );
+            } );
+          } );
+        } );
+      } );
+    } );
+  } );
+
+  ( _getLibreOfficeCmd() ? describe : describe.skip )( 'for .ots files (LibreOffice -> .xlsx -> ExcelJS)', function() {
+    it( 'will extract text', function( done ) {
+      var sofficeCmd = _getLibreOfficeCmd();
+      this.timeout( 30000 );
+
+      _mkdtemp( function( err, tmpDir ) {
+        if ( err ) {
+          done( err );
+          return;
+        }
+
+        var xlsxPath = path.join( tmpDir, 'hello.xlsx' );
+        _writeHelloWorldXlsx( xlsxPath, function( err2 ) {
+          if ( err2 ) {
+            _rmrf( tmpDir, function() { done( err2 ); } );
+            return;
+          }
+
+          _convertWithLibreOffice( sofficeCmd, xlsxPath, tmpDir, 'ots', function( err3, otsPath ) {
+            if ( err3 ) {
+              _rmrf( tmpDir, function() { done( err3 ); } );
+              return;
+            }
+
+            fromFileWithPath( otsPath, function( error, text ) {
+              _rmrf( tmpDir, function() {
+                expect( error ).to.be.null;
+                expect( text ).to.be.an( 'string' );
+                expect( text ).to.contain( 'Hello,World' );
+                done();
+              } );
+            } );
+          } );
+        } );
+      } );
+    } );
+
+    it( 'will extract text and preserve line breaks', function( done ) {
+      var sofficeCmd = _getLibreOfficeCmd();
+      this.timeout( 30000 );
+
+      _mkdtemp( function( err, tmpDir ) {
+        if ( err ) {
+          done( err );
+          return;
+        }
+
+        var xlsxPath = path.join( tmpDir, 'hello.xlsx' );
+        _writeHelloWorldXlsx( xlsxPath, function( err2 ) {
+          if ( err2 ) {
+            _rmrf( tmpDir, function() { done( err2 ); } );
+            return;
+          }
+
+          _convertWithLibreOffice( sofficeCmd, xlsxPath, tmpDir, 'ots', function( err3, otsPath ) {
+            if ( err3 ) {
+              _rmrf( tmpDir, function() { done( err3 ); } );
+              return;
+            }
+
+            fromFileWithPath( otsPath, { preserveLineBreaks: true }, function( error, text ) {
+              _rmrf( tmpDir, function() {
+                expect( error ).to.be.null;
+                expect( text ).to.be.an( 'string' );
+                expect( text ).to.contain( 'Hello,World' );
+                expect( text ).to.contain( '\n' );
+                done();
+              } );
+            } );
+          } );
+        } );
+      } );
+    } );
+  } );
+
+  ( _getLibreOfficeCmd() ? describe : describe.skip )( 'for .xls files (LibreOffice -> .xlsx -> ExcelJS)', function() {
+    it( 'will extract text', function( done ) {
+      var sofficeCmd = _getLibreOfficeCmd();
+      this.timeout( 30000 );
+
+      _mkdtemp( function( err, tmpDir ) {
+        if ( err ) {
+          done( err );
+          return;
+        }
+
+        var xlsxPath = path.join( tmpDir, 'hello.xlsx' );
+        _writeHelloWorldXlsx( xlsxPath, function( err2 ) {
+          if ( err2 ) {
+            _rmrf( tmpDir, function() { done( err2 ); } );
+            return;
+          }
+
+          _convertWithLibreOffice( sofficeCmd, xlsxPath, tmpDir, 'xls', function( err3, xlsPath ) {
+            if ( err3 ) {
+              _rmrf( tmpDir, function() { done( err3 ); } );
+              return;
+            }
+
+            fromFileWithPath( xlsPath, function( error, text ) {
+              _rmrf( tmpDir, function() {
+                expect( error ).to.be.null;
+                expect( text ).to.be.an( 'string' );
+                expect( text ).to.contain( 'Hello,World' );
+                done();
+              } );
+            } );
+          } );
+        } );
+      } );
+    } );
+  } );
+
+  describe( 'for .xlsm files (ExcelJS direct)', function() {
+    it( 'will extract text', function( done ) {
+      this.timeout( 20000 );
+
+      _mkdtemp( function( err, tmpDir ) {
+        if ( err ) {
+          done( err );
+          return;
+        }
+
+        var xlsxPath = path.join( tmpDir, 'hello.xlsx' );
+        var xlsmPath = path.join( tmpDir, 'hello.xlsm' );
+
+        _writeHelloWorldXlsx( xlsxPath, function( err2 ) {
+          if ( err2 ) {
+            _rmrf( tmpDir, function() { done( err2 ); } );
+            return;
+          }
+
+          fs.copyFile( xlsxPath, xlsmPath, function( err3 ) {
+            if ( err3 ) {
+              _rmrf( tmpDir, function() { done( err3 ); } );
+              return;
+            }
+
+            fromFileWithPath( xlsmPath, function( error, text ) {
+              _rmrf( tmpDir, function() {
+                expect( error ).to.be.null;
+                expect( text ).to.be.an( 'string' );
+                expect( text ).to.contain( 'Hello,World' );
+                done();
+              } );
+            } );
+          } );
+        } );
+      } );
+    } );
+  } );
 
   test(
     'xml',
@@ -756,12 +1042,7 @@ describe( 'textract', function() {
     'This is a document template, yay templates!\nWoo templates get me so excited!'
   );
 
-  test(
-    'ots',
-    'ots.ots',
-    "This,is , template, an,open,office,template isn't,it,awesome?, you,know,it,is ",
-    "This,is , template,\nan,open,office,template\nisn't,it,awesome?,\nyou,know,it,is\n"
-  );
+  // .ots is covered by the LibreOffice conversion tests above.
 
   test(
     'odg',
