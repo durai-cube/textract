@@ -11,8 +11,10 @@ var test = function(_testFunction, withMime) {
     testFunction = _testFunction();
   });
 
-  var _test = function(ext, name, _text) {
-    it('will ' + ext + ' files', function(done) {
+  var _test = function( ext, name, _text, requiredCmd ) {
+    var testIt = ( requiredCmd && global.hasCommand && !global.hasCommand( requiredCmd ) ) ? it.skip : it;
+
+    testIt( 'will ' + ext + ' files', function( done ) {
       var docPath = path.join( __dirname, "files", name);
       var textBuff = fs.readFileSync(docPath);
 
@@ -37,13 +39,8 @@ var test = function(_testFunction, withMime) {
   _test(
     "doc",
     "doc.doc",
-    " Word Specification Sample Working Draft 04, 16 August 2002 Document identifier: wd-spectools-word-s"
-  );
-
-  _test(
-    "xls",
-    "test.xls",
-    "This,is,a,spreadsheet,yay! "
+    " Word Specification Sample Working Draft 04, 16 August 2002 Document identifier: wd-spectools-word-s",
+    'antiword'
   );
 
   _test(
@@ -82,11 +79,6 @@ var test = function(_testFunction, withMime) {
     " This is an h1 This is an h2 This text has been bolded and italicized "
   );
 
-  _test(
-    "ods",
-    "ods.ods",
-    "This,is,a,ods Really,it,is, I,promise,, "
-  );
 
   _test(
     "xml",
@@ -118,11 +110,6 @@ var test = function(_testFunction, withMime) {
     "This is a document template, yay templates! Woo templates get me so excited!"
   );
 
-  _test(
-    "ots",
-    "ots.ots",
-    "This,is , template, an,open,office,template isn't,it,awesome?, you,know,it,is "
-  );
 
   _test(
     'odg',

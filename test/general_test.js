@@ -3,6 +3,7 @@
 
 var path = require( 'path' )
   , fs = require( 'fs' )
+  , http = require( 'http' )
   ;
 
 describe( 'textract', function() {
@@ -23,7 +24,7 @@ describe( 'textract', function() {
       var filePath = 'foo/bar/foo.txt';
       fromFileWithPath( filePath, function( error, text ) {
         expect( text ).to.be.null;
-        expect( error ).to.be.an( 'object' );
+        expect( error ).to.be.an( 'error' );
         expect( error.message ).to.be.an( 'string' );
         expect( error.message ).to.eql( 'File at path [[ ' + filePath + ' ]] does not exist.' );
         done();
@@ -34,7 +35,7 @@ describe( 'textract', function() {
       var filePath = path.join( __dirname, 'files', 'MxAgCrProd.ppt' );
       fromFileWithPath( filePath, function( error, text ) {
         expect( text ).to.be.null;
-        expect( error ).to.be.an( 'object' );
+        expect( error ).to.be.an( 'error' );
         expect( error.message ).to.be.an( 'string' );
         expect( error.typeNotFound ).to.be.true;
         expect( error.message.substring( 0, 61 ) ).to.eql( 'Error for type: [[ application/vnd.ms-powerpoint ]], file: [[' );
@@ -126,6 +127,33 @@ describe( 'textract', function() {
   });
 
   describe( 'can handle all the different API variations', function() {
+    var server, baseUrl;
+
+    before( function( done ) {
+      var docxPath = path.join( __dirname, 'files', 'new docx(1).docx' );
+      var docxBuff = fs.readFileSync( docxPath );
+
+      server = http.createServer( function( req, res ) {
+        // Serve the docx fixture at any path.
+        res.statusCode = 200;
+        res.setHeader( 'content-type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' );
+        res.end( docxBuff );
+      } );
+
+      server.listen( 0, '127.0.0.1', function() {
+        baseUrl = 'http://127.0.0.1:' + server.address().port;
+        done();
+      } );
+    } );
+
+    after( function( done ) {
+      if ( server ) {
+        server.close( done );
+      } else {
+        done();
+      }
+    } );
+
     var test = function( done ) {
       return function( error, text ) {
         expect( error ).to.be.null;
@@ -188,12 +216,14 @@ describe( 'textract', function() {
     });
 
     it( 'fromUrl(url, options, callback)', function( done ) {
-      var url = 'https://cdn.rawgit.com/dbashford/textract/master/test/files/new%20docx(1).docx?raw=true';
+      this.timeout( 5000 );
+      var url = baseUrl + '/new%20docx(1).docx';
       fromUrl( url, {}, test( done ) );
     });
 
     it( 'fromUrl1(url,callback)', function( done ) {
-      var url = 'https://cdn.rawgit.com/dbashford/textract/master/test/files/new%20docx(1).docx?raw=true';
+      this.timeout( 5000 );
+      var url = baseUrl + '/new%20docx(1).docx';
       fromUrl( url, test( done ) );
     });
   });
