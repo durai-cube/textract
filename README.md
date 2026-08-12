@@ -51,6 +51,7 @@ Note, if any of the requirements below are missing, textract will run and extrac
 * `DXF` extraction requires `drawingtotext` be available, [link](https://github.com/davidworkman9/drawingtotext)
 * Spreadsheet extraction uses ExcelJS for OpenXML formats (`XLSX`, `XLTX`, `XLSM`).
 * `XLS`, `XLSB`, `ODS`, `OTS` extraction requires LibreOffice (`soffice`) to be installed (used to convert to `.xlsx` which is then parsed via ExcelJS).
+* EPUB extraction uses the `epub` parser package (migrated from `epub2` for security maintenance).
 
 ## Configuration
 

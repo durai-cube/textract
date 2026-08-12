@@ -8,6 +8,10 @@
 * CLI: removed `meow` dependency; argument parsing supports nested flags like `--exec.maxBuffer` and boolean/number coercion; defaults `preserveLineBreaks` to `true` for readability.
 * DOCX/PPTX extraction: migrated XML parsing to `@xmldom/xmldom` and improved robustness (better ordering + error handling, and DOCX includes headers/footers).
 * EPUB extraction is deterministic (preserves chapter order).
+* EPUB dependency/security hardening:
+	* Replaced `epub2` with `epub` in dependencies.
+	* Removed transitive `adm-zip` exposure from the EPUB extraction path.
+	* Verified EPUB extractor tests still pass after migration.
 * Markdown extraction updated for modern `marked` API.
 * Security/maintenance: dependency refresh with `npm audit` clean; tests are less flaky (local HTTP servers replace external network calls; tests skip when required system binaries are missing).
 
