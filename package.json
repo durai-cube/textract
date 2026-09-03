@@ -65,7 +65,7 @@
     "iconv-lite": "0.4.15",
     "jschardet": "1.4.1",
     "yauzl": "2.7.0",
-    "epub2": "^3.0.2"
+    "epub": "^2.1.1"
   },
   "devDependencies": {
     "chai": "^4.5.0",
@@ -75,6 +75,10 @@
   "scripts": {
     "test": "node_modules/.bin/mocha --require test/common.js \"test/**/*_test.js\"",
     "lint": "node_modules/.bin/eslint -c .eslintrc.json lib"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.1.0",
+    "uuid": "^11.1.1"
   },
   "license": "MIT",
   "engines": {
